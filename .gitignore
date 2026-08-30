@@ -1,0 +1,48 @@
+# ==========================================
+# 1. Terraform Core Blocks (Crucial)
+# ==========================================
+# Block the heavy local provider caching directories
+terraform-bootstrap/.terraform/
+terraform-bootstrap/.terraform.lock.hcl
+
+terraform-lab/.terraform/
+terraform-lab/.terraform.lock.hcl
+
+
+# Block all local state configurations (since you use S3/DynamoDB)
+terraform-bootstrap/*.tfstate
+terraform-bootstrap/*.tfstate.*
+
+
+terraform-lab/*.tfstate
+terraform-lab/*.tfstate.*
+
+# Block automatically generated execution plans and crash logs
+*.tfplan
+crash.log
+
+# Block any local variable definitions containing passwords/AWS secrets
+*.tfvars
+*.tfvars.json
+
+# ==========================================
+# 2. Local Environment & OS Metadata
+# ==========================================
+# Block Python runtime footprints from your incidents directory
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Linux system indexing files
+.DS_Store
+.directory
+.pki/
+
+# ==========================================
+# 3. Security Boundary Targets (Safeguards)
+# ==========================================
+# In case you accidentally drop an identity file in your folders
+*.pem
+*.key
+*.pub

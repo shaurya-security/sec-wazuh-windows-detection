@@ -1,0 +1,15 @@
+skip-check:
+  # Public subnet intentionally assigns public IPs
+  - CKV_AWS_130
+
+  # Allow unrestricted outbound traffic from instances
+  - CKV_AWS_382
+
+  # t3.micro is EBS-optimized by AWS; Checkov still flags it
+  - CKV_AWS_135
+
+  # VPC Flow Logs planned as a future enhancement
+  - CKV2_AWS_11
+
+  # Default security group hardening not part of this lab
+  - CKV2_AWS_12
