@@ -92,6 +92,167 @@ fi
 
 
 # --------------------------------------------------
+# Local Rules - Wazuh Manager
+# --------------------------------------------------
+
+sudo tee /var/ossec/etc/rules/local_rules.xml << 'EOF'
+<group name="windows,soc_simulation,">
+
+  <!-- ============================================================
+       SCENARIO 1: SUSPICIOUS POWERSHELL EXECUTION (T1059.001)
+       ============================================================ -->
+  <rule id="115100" level="8">
+    <if_sid>67027</if_sid>
+    <field name="win.eventdata.newProcessName" type="pcre2">(?i)\\powershell\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(-enc|-encodedcommand|-nop|-noprofile|-w[[:space:]]+hidden|-windowstyle[[:space:]]+hidden)</field>
+    <description>SOC-SIM [Scenario 1]: Suspicious PowerShell execution detected</description>
+    <mitre><id>T1059.001</id></mitre>
+    <group>powershell,execution</group>
+  </rule>
+
+
+  <!-- ============================================================
+       SCENARIO 2: FAILED LOGON BRUTE FORCE (T1110)
+       Base Rule: Windows Logon Failure (Event ID 4625)
+       ============================================================ -->
+  <rule id="115200" level="5">
+    <if_sid>60110</if_sid>
+    <field name="win.system.eventID">^4625$</field>
+    <description>SOC-SIM [Scenario 2]: Single failed logon attempt (Event 4625)</description>
+    <mitre><id>T1110</id></mitre>
+    <group>authentication_failed</group>
+  </rule>
+
+  <!-- Correlation: 5+ failed logons within 60 seconds -->
+  <rule id="115210" level="12" frequency="5" timeframe="60">
+    <if_matched_sid>115200</if_matched_sid>
+    <same_source_ip />
+    <description>SOC-SIM [Scenario 2]: Multiple failed logon attempts detected (Potential Brute-Force)</description>
+    <mitre><id>T1110</id></mitre>
+    <group>high_confidence,correlation,brute_force</group>
+  </rule>
+
+
+  <!-- ============================================================
+       SCENARIO 3: SCHEDULED TASK PERSISTENCE (T1053.005)
+       ============================================================ -->
+
+  <!-- Base Event A: schtasks.exe process execution (Event 4688) -->
+  <rule id="115300" level="8">
+    <if_sid>67027</if_sid>
+    <field name="win.eventdata.newProcessName" type="pcre2">(?i)\\schtasks\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)/create</field>
+    <description>SOC-SIM [Scenario 3]: schtasks.exe used to create a scheduled task</description>
+    <mitre><id>T1053.005</id></mitre>
+    <group>persistence,scheduled_task</group>
+  </rule>
+
+  <!-- Base Event B: Security Audit Scheduled Task Created (Event 4698) -->
+  <rule id="115301" level="8">
+    <field name="win.system.eventID">^4698$</field>
+    <description>SOC-SIM [Scenario 3]: Windows Security Audit logged scheduled task creation</description>
+    <mitre><id>T1053.005</id></mitre>
+    <group>persistence,scheduled_task</group>
+  </rule>
+
+  <!-- Correlation: schtasks.exe (115300) + Audit Creation (115301) within 60s -->
+  <rule id="115310" level="13" timeframe="60">
+    <if_sid>115300</if_sid>
+    <if_matched_sid>115301</if_matched_sid>
+    <description>HIGH CORRELATION: Scheduled Task persistence created via command line</description>
+    <mitre><id>T1053.005</id></mitre>
+    <group>high_confidence,correlation,persistence,scheduled_task</group>
+  </rule>
+
+</group>
+EOF
+
+
+cat > "${WORK_HOME}/active_response_config.sh" <<'ACTIVE'
+#!/bin/bash
+sudo tee -a /var/ossec/etc/ossec.conf << 'EOF'
+
+<!-- Active Response: Scenario 1 - Terminate Malicious Process -->
+<command>
+  <name>task-kill</name>
+  <executable>task-kill.exe</executable>
+  <timeout_allowed>no</timeout_allowed>
+</command>
+
+<active-response>
+  <command>task-kill</command>
+  <location>local</location>
+  <rules_id>115100</rules_id>
+</active-response>
+EOF
+ACTIVE
+
+chmod +x "${WORK_HOME}/active_response_config.sh"
+chown "${WORK_USER}:${WORK_USER}" "${WORK_HOME}/active_response_config.sh"
+
+
+cat > "${WORK_HOME}/alert_gen_commands.txt" <<'EOF'
+### Scenario 1 — Encoded PowerShell & Active Response Termination
+
+# Prepares a simple Encoded PowerShell command that sleeps for 30 seconds
+$cmd = "Start-Sleep -Seconds 30"
+$bytes = [System.Text.Encoding]::Unicode.GetBytes($cmd)
+$encodedCmd = [Convert]::ToBase64String($bytes)
+
+Write-Host "Launching Encoded PowerShell Process..." -ForegroundColor Yellow
+
+# Launch process with -EncodedCommand and -NoProfile
+$proc = Start-Process powershell.exe -ArgumentList "-NoProfile -EncodedCommand $encodedCmd" -PassThru
+
+Write-Host "Process Started with PID: $($proc.Id)" -ForegroundColor Cyan
+Start-Sleep -Seconds 3
+
+# Verify if Active Response terminated the process
+if (Get-Process -Id $proc.Id -ErrorAction SilentlyContinue) {
+    Write-Host "Process is still running." -ForegroundColor Red
+} else {
+    Write-Host "SUCCESS: Process (PID: $($proc.Id)) was terminated by Active Response!" -ForegroundColor Green
+}
+
+=================================================================================================================
+=================================================================================================================
+
+### Scenario 2 — Failed Logons Brute-Force
+
+Write-Host "Simulating Brute-Force Logon Attempt (6 Failed Logons)..." -ForegroundColor Yellow
+
+1..6 | ForEach-Object {
+    Write-Host "Attempt $_..." -NoNewline
+    # Attempts network authentication using an invalid username/password
+    cmd.exe /c "net use \\localhost\C$ /user:FakeSOCUser InvalidPass123! 2>&1" | Out-Null
+    Write-Host " Failed." -ForegroundColor Red
+    Start-Sleep -Milliseconds 500
+}
+
+Write-Host "`nCheck Wazuh Dashboard for Rule 115210 (Brute-Force Correlation Alert)." -ForegroundColor Green
+
+=================================================================================================================
+=================================================================================================================
+
+### Scenario 3 — Scheduled Task Persistence Creation
+
+Write-Host "Simulating Scheduled Task Persistence Creation..." -ForegroundColor Yellow
+
+# Create persistent task named "SOC_Persistence_Task"
+schtasks /create /tn "SOC_Persistence_Task" /tr "C:\Windows\System32\notepad.exe" /sc daily /st 09:00 /f
+
+Write-Host "`nTask Created successfully." -ForegroundColor Green
+Write-Host "Check Wazuh Dashboard for Rule 115310 (Scheduled Task Persistence Correlation Alert)." -ForegroundColor Cyan
+
+# Remove the test task
+schtasks /delete /tn "SOC_Persistence_Task" /f | Out-Null
+Write-Host "Test Scheduled Task 'SOC_Persistence_Task' deleted." -ForegroundColor Green
+
+EOF
+
+chown "${WORK_USER}:${WORK_USER}" "${WORK_HOME}/alert_gen_commands.txt"
+
+# --------------------------------------------------
 # Configure Wazuh Dashboard Timezone (Asia/Kolkata)
 # --------------------------------------------------
 echo "Setting Wazuh Dashboard timezone to Asia/Kolkata..."
@@ -187,9 +348,12 @@ for i in "${!SERVICES[@]}"; do
     fi
 done
 
+
 # --------------------------------------------------
 # Create marker file for successful installation
 # --------------------------------------------------
+DASHBOARD_CONF="/etc/wazuh-dashboard/opensearch_dashboards.yml"
+
 cat > "${WORK_HOME}/.wazuh-provisioned" <<EOF
 Wazuh provisioned on: $(date)
 Version: 4.14
