@@ -1,24 +1,36 @@
-# Upload common.sh and track file changes via MD5 hash
-resource "aws_s3_object" "common_sh" {
-  bucket = "shaurya-terraform-userdata-2026"
-  key    = "common.sh"
-  source = "${path.module}/userdata/common.sh"
-  etag   = filemd5("${path.module}/userdata/common.sh")
-}
+########################################
+# Bootstrap payloads
+#
+# The bucket itself is managed outside this configuration (it has to exist
+# before this module can write to it). Only the objects are managed here.
+#
+# etag = filemd5(...) makes Terraform re-upload whenever file content changes,
+# which in turn feeds the per-instance user_data hashes in compute.tf.
+########################################
 
-# Upload wazuh.sh and track file changes via MD5 hash
-resource "aws_s3_object" "wazuh_sh" {
-  bucket = "shaurya-terraform-userdata-2026"
-  key    = "wazuh.sh"
-  source = "${path.module}/userdata/wazuh.sh"
-  etag   = filemd5("${path.module}/userdata/wazuh.sh")
-}
+resource "aws_s3_object" "userdata" {
+  for_each = local.userdata_objects
 
-# Optional: Upload windows.ps1 if managed via Terraform
+  bucket = var.userdata_bucket
+  key    = each.key
+  source = each.value
+  etag   = filemd5(each.value)
 
-resource "aws_s3_object" "windows_ps1" {
-  bucket = "shaurya-terraform-userdata-2026"
-  key    = "windows.ps1"
-  source = "${path.module}/userdata/windows.ps1"
-  etag   = filemd5("${path.module}/userdata/windows.ps1")
+  # Keeps `aws s3 cp` + local execution honest about text vs binary.
+  content_type = lookup(
+    {
+      "sh"   = "text/x-shellscript"
+      "ps1"  = "text/plain"
+      "xml"  = "application/xml"
+      "conf" = "text/plain"
+      "txt"  = "text/plain"
+    },
+    element(reverse(split(".", each.key)), 0),
+    "application/octet-stream"
+  )
+
+  tags = {
+    Name      = each.key
+    ManagedBy = "terraform"
+  }
 }

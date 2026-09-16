@@ -1,7 +1,9 @@
+########################################
+# Wazuh Manager (Amazon Linux 2023)
+########################################
 
 resource "aws_instance" "wazuh" {
-
-  ami                         = data.aws_ami.amazon_linux.id
+  ami                         = var.linux_ami_id
   instance_type               = "m7i-flex.large"
   subnet_id                   = aws_subnet.public.id
   vpc_security_group_ids      = [aws_security_group.wazuh_sg.id]
@@ -10,16 +12,21 @@ resource "aws_instance" "wazuh" {
 
   depends_on = [
     time_sleep.wait_for_iam,
-    aws_s3_object.common_sh,
-    aws_s3_object.wazuh_sh
+    aws_s3_object.userdata,
   ]
 
-  user_data = templatefile("${path.module}/userdata/s3-bootstrap.sh.tpl", {
-    s3_bucket   = "shaurya-terraform-userdata-2026"
-    script_name = "wazuh.sh"
-    common_hash = filemd5("${path.module}/userdata/common.sh")
-    script_hash = filemd5("${path.module}/userdata/wazuh.sh")
-    timezone    = "Asia/Kolkata"
+  user_data = templatefile("${local.userdata_dir}/s3-bootstrap.sh.tpl", {
+    s3_bucket     = var.userdata_bucket
+    timezone      = var.timezone
+    wazuh_version = var.wazuh_version
+    wazuh_branch  = local.wazuh_branch
+
+    # Only the payloads this instance actually consumes. Each entry is
+    # "key => md5", so editing windows.ps1 does NOT churn this instance.
+    payloads = {
+      for k, v in local.userdata_hashes : k => v
+      if contains(["common.sh", "wazuh.sh", "local_rules.xml", "active-response.conf"], k)
+    }
   })
 
   metadata_options {
@@ -36,12 +43,18 @@ resource "aws_instance" "wazuh" {
 
   tags = { Name = local.wazuh_ec2_name }
 
+  # Uncomment to stop a newer Amazon Linux release from forcing a rebuild:
+  # lifecycle {
+  #   ignore_changes = [ami]
+  # }
 }
 
-
+########################################
+# Windows SOC Endpoint (Server 2022)
+########################################
 
 resource "aws_instance" "windows_endpoint" {
-  ami                         = data.aws_ssm_parameter.windows_2022_ami.value
+  ami                         = local.windows_ami_id
   instance_type               = "c7i-flex.large"
   subnet_id                   = aws_subnet.public.id
   vpc_security_group_ids      = [aws_security_group.windows_sg.id]
@@ -50,13 +63,22 @@ resource "aws_instance" "windows_endpoint" {
 
   depends_on = [
     time_sleep.wait_for_iam,
-    aws_s3_object.windows_ps1
+    aws_s3_object.userdata,
   ]
 
-
-  user_data = templatefile("${path.module}/userdata/windows-bootstrap.ps1.tpl", {
+  user_data = templatefile("${local.userdata_dir}/windows-bootstrap.ps1.tpl", {
+    s3_bucket        = var.userdata_bucket
     wazuh_manager_ip = aws_instance.wazuh.private_ip
-    windows_hash     = filemd5("${path.module}/userdata/windows.ps1")
+    wazuh_version    = var.wazuh_version
+    wazuh_agent_msi  = local.wazuh_agent_msi
+    ami_unpinned     = local.windows_ami_unpinned
+
+    # Windows-side payloads only. Simulation scripts land here in Batch 4
+    # and will be picked up automatically by the prefix match.
+    payloads = {
+      for k, v in local.userdata_hashes : k => v
+      if k == "windows.ps1" || startswith(k, "simulations/")
+    }
   })
 
   metadata_options {
@@ -65,10 +87,11 @@ resource "aws_instance" "windows_endpoint" {
   }
 
   root_block_device {
-    encrypted = true
+    volume_size           = 60
+    volume_type           = "gp3"
+    encrypted             = true
+    delete_on_termination = true
   }
 
-  tags = {
-    Name = "${local.ec2_name}-windows-soc"
-  }
+  tags = { Name = local.windows_ec2_name }
 }

@@ -1,57 +1,76 @@
 #!/bin/bash
-# Script Hash: ${script_hash}
-# Common Hash: ${common_hash}
+#
+# Terraform-rendered bootstrap shim. Keep this file thin: its only jobs are to
+# fetch payloads from S3 and hand configuration to them via the environment.
+# All real logic belongs in the fetched scripts so they stay plain S3 files.
+#
+# Payload fingerprints (changing any of these re-renders user_data and, with
+# user_data_replace_on_change, rebuilds this instance):
+%{ for key, hash in payloads ~}
+#   ${key} = ${hash}
+%{ endfor ~}
 
 set -euxo pipefail
 
 exec > >(tee /var/log/wazuh_bootstrap.log | logger -t wazuh_bootstrap -s 2>/dev/console) 2>&1
 
-BUCKET="shaurya-terraform-userdata-2026"
+# --------------------------------------------------
+# Configuration injected by Terraform
+# --------------------------------------------------
+export BUCKET="${s3_bucket}"
+export TIMEZONE="${timezone}"
+export WAZUH_VERSION="${wazuh_version}"   # e.g. 4.14.0  -> agent MSI + version checks
+export WAZUH_BRANCH="${wazuh_branch}"     # e.g. 4.14    -> installer URL path
+export BOOTSTRAP_DIR="/opt/bootstrap"
+
+mkdir -p "$BOOTSTRAP_DIR"
 
 # --------------------------------------------------
-# AWS CLI Installation
+# AWS CLI
 # --------------------------------------------------
-
-if ! command -v aws &> /dev/null; then
-    echo "📦 Installing AWS CLI..."
+if ! command -v aws &>/dev/null; then
+    echo "Installing AWS CLI..."
     dnf install -y awscli2 || dnf install -y aws-cli
 fi
 
 # --------------------------------------------------
-# Step 1: Download and run common.sh from S3
+# Fetch payloads
 # --------------------------------------------------
+fetch() {
+    local key="$1"
+    local dest="$BOOTSTRAP_DIR/$key"
+    mkdir -p "$(dirname "$dest")"
 
-echo "📦 Running common bootstrap..."
+    for i in {1..5}; do
+        if aws s3 cp "s3://$BUCKET/$key" "$dest"; then
+            echo "Fetched $key"
+            return 0
+        fi
+        echo "Fetch of $key failed, retry $i/5 in 5s..."
+        sleep 5
+    done
 
-for i in {1..5}; do
-    aws s3 cp s3://"$BUCKET"/common.sh /tmp/common.sh && break
-    echo "S3 copy failed, retrying in 5 seconds... ($i/5)"
-    sleep 5
-done
+    echo "FATAL: could not fetch $key from s3://$BUCKET" >&2
+    return 1
+}
 
-chmod +x /tmp/common.sh
-/tmp/common.sh
-
-# --------------------------------------------------
-# Step 2: Download and run wazuh.sh from S3
-# --------------------------------------------------
-
-echo "🔐 Running Wazuh installation..."
-
-for i in {1..5}; do
-    aws s3 cp s3://"$BUCKET"/wazuh.sh /tmp/wazuh.sh && break
-    echo "S3 copy failed, retrying in 5 seconds... ($i/5)"
-    sleep 5
-done
-
-chmod +x /tmp/wazuh.sh
-/tmp/wazuh.sh
+%{ for key, hash in payloads ~}
+fetch "${key}"
+%{ endfor ~}
 
 # --------------------------------------------------
-# Step 3: Cleanup
+# Execute (order matters: common.sh sets up the user/env wazuh.sh relies on)
 # --------------------------------------------------
+chmod +x "$BOOTSTRAP_DIR"/*.sh
 
-rm -f /tmp/common.sh /tmp/wazuh.sh
+echo "Running common bootstrap..."
+"$BOOTSTRAP_DIR/common.sh"
+
+echo "Running Wazuh installation (version $WAZUH_VERSION)..."
+"$BOOTSTRAP_DIR/wazuh.sh"
+
+# Bootstrap payloads are left in $BOOTSTRAP_DIR deliberately: on a disposable
+# lab box they are useful for debugging a failed run.
 
 echo "===== Bootstrap Complete ====="
 date
