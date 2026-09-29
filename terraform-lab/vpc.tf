@@ -104,7 +104,7 @@ resource "aws_security_group" "wazuh_sg" {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = ["${chomp(data.http.my_public_ip.response_body)}/32"]
+    cidr_blocks = [local.bad_actor_ip]
   }
 
   egress {

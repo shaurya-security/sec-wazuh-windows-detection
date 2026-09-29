@@ -3,7 +3,7 @@
 # Wazuh manager installation.
 #
 # Plain S3 payload - NO Terraform interpolation. All configuration arrives via
-# environment variables exported by s3-bootstrap.sh.tpl:
+# environment variables exported by bootstrap.sh.tpl:
 #   BUCKET, TIMEZONE, WAZUH_VERSION, WAZUH_BRANCH, BOOTSTRAP_DIR
 
 set -euxo pipefail
@@ -47,8 +47,7 @@ chmod +x wazuh-install.sh
 
 bash ./wazuh-install.sh -a -i
 
-# Fail loudly if the installed manager is not the version we asked for -
-# a silent drift here is exactly what caused the 4.14/4.9 mismatch.
+# Fail loudly if the installed manager is not the version we asked for.
 INSTALLED_VERSION="$(/var/ossec/bin/wazuh-control info 2>/dev/null \
     | grep -oP 'v\K[0-9]+\.[0-9]+\.[0-9]+' || echo 'unknown')"
 
@@ -63,42 +62,10 @@ fi
 echo "Installing custom SOC simulation rules..."
 
 install -o wazuh -g wazuh -m 0640 \
-    "${BOOTSTRAP_DIR}/local_rules.xml" \
-    /var/ossec/etc/rules/local_rules.xml
+    "${BOOTSTRAP_DIR}/wazuh-local-rules.xml" \
+    /var/ossec/etc/rules/wazuh-local-rules.xml
 
-# --------------------------------------------------
-# Active response wiring
-#
-# Inserted before the final </ossec_config>. Idempotent: a marker comment
-# prevents duplicate blocks if this script is ever re-run on a live host.
-# --------------------------------------------------
-OSSEC_CONF="/var/ossec/etc/ossec.conf"
-AR_MARKER="<!-- soc-sim-active-response -->"
-
-if grep -q "$AR_MARKER" "$OSSEC_CONF"; then
-    echo "Active response block already present, skipping."
-else
-    echo "Merging active response configuration..."
-    cp "$OSSEC_CONF" "${OSSEC_CONF}.bak.$(date +%Y%m%d%H%M%S)"
-
-    AR_BLOCK="$(mktemp)"
-    {
-        echo "  $AR_MARKER"
-        cat "${BOOTSTRAP_DIR}/active-response.conf"
-    } > "$AR_BLOCK"
-
-    # Insert before the LAST closing tag, not the first.
-    LAST_CLOSE="$(grep -n '</ossec_config>' "$OSSEC_CONF" | tail -n 1 | cut -d: -f1)"
-    sed -i "${LAST_CLOSE}r ${AR_BLOCK}" "$OSSEC_CONF"
-    # sed 'r' appends after the line; move the block above the closing tag.
-    sed -i "${LAST_CLOSE}d" "$OSSEC_CONF"
-    echo "</ossec_config>" >> "$OSSEC_CONF"
-
-    rm -f "$AR_BLOCK"
-    chown wazuh:wazuh "$OSSEC_CONF"
-fi
-
-# Validate before restarting - a malformed ossec.conf leaves the manager down.
+# Validate ruleset before restarting the manager.
 if ! /var/ossec/bin/wazuh-logtest -t >/dev/null 2>&1; then
     echo "ERROR: ossec.conf or ruleset failed validation. Review with:"
     echo "  /var/ossec/bin/wazuh-logtest -t"
@@ -115,12 +82,18 @@ fi
 
 TOKEN=$(curl -s -S -X PUT "http://169.254.169.254/latest/api/token" \
     -H "X-aws-ec2-metadata-token-ttl-seconds: 60" || true)
-PUBLIC_IP=$(curl -s -S -H "X-aws-ec2-metadata-token: $TOKEN" \
+
+PUBLIC_IP=$(curl -s -S \
+    -H "X-aws-ec2-metadata-token: $TOKEN" \
     "http://169.254.169.254/latest/meta-data/public-ipv4" || true)
+
 DASHBOARD_HOST="${PUBLIC_IP:-$(hostname)}"
 
 PASS_VAL=$(grep -a "Password:" /var/log/wazuh-install.log \
-    | grep -v '^+ ' | head -n 1 | sed 's/.*Password: //' | xargs || true)
+    | grep -v '^+ ' \
+    | head -n 1 \
+    | sed 's/.*Password: //' \
+    | xargs || true)
 
 if [ -z "$PASS_VAL" ]; then
     echo "WARNING: admin password could not be parsed from the install log."
@@ -156,11 +129,13 @@ if [ -n "$PASS_VAL" ]; then
         sleep 5
     done
 
-    curl -s -k -X POST "https://localhost:443/api/opensearch-dashboards/settings" \
+    curl -s -k -X POST \
+        "https://localhost:443/api/opensearch-dashboards/settings" \
         -H "osd-xsrf: true" \
         -H "Content-Type: application/json" \
         -u "admin:${PASS_VAL}" \
-        -d "{\"changes\":{\"dateFormat:tz\":\"${TIMEZONE}\"}}" > /dev/null \
+        -d "{\"changes\":{\"dateFormat:tz\":\"${TIMEZONE}\"}}" \
+        > /dev/null \
         && echo "Dashboard timezone set to ${TIMEZONE}"
 ) &
 fi
@@ -169,13 +144,17 @@ fi
 # Services
 # --------------------------------------------------
 systemctl daemon-reload
-systemctl enable wazuh-indexer wazuh-manager wazuh-dashboard
+
+systemctl enable \
+    wazuh-indexer \
+    wazuh-manager \
+    wazuh-dashboard
 
 for svc in wazuh-indexer wazuh-manager wazuh-dashboard; do
     systemctl start "$svc" 2>/dev/null || true
 done
 
-# Restart the manager so the new ruleset and AR config take effect.
+# Restart manager so the custom ruleset takes effect.
 echo "Restarting wazuh-manager to load custom rules..."
 systemctl restart wazuh-manager
 
@@ -188,6 +167,7 @@ systemctl restart wazuh-dashboard
 sleep 10
 
 ALL_OK=true
+
 for svc in wazuh-indexer wazuh-manager wazuh-dashboard; do
     if systemctl is-active --quiet "$svc"; then
         echo "OK      : $svc"
@@ -202,17 +182,19 @@ done
 # --------------------------------------------------
 cat > "${WORK_HOME}/.wazuh-provisioned" <<EOF
 Wazuh provisioned on : $(date)
-Requested version    : ${WAZUH_VERSION}
-Installed version    : ${INSTALLED_VERSION}
-Log format contract  : eventchannel / Security channel
-Timezone             : ${TIMEZONE}
-Custom rules         : /var/ossec/etc/rules/local_rules.xml
-Active response      : task-kill on rule 115100
+Requested version     : ${WAZUH_VERSION}
+Installed version     : ${INSTALLED_VERSION}
+Log format contract   : eventchannel / Security channel
+Timezone              : ${TIMEZONE}
+Custom rules          : /var/ossec/etc/rules/wazuh-local-rules.xml
+Detection focus       : Windows RDP brute force
 EOF
+
 chown "${WORK_USER}:${WORK_USER}" "${WORK_HOME}/.wazuh-provisioned"
 cp "${WORK_HOME}/.wazuh-provisioned" /root/.wazuh-provisioned
 
 INFO_FILE="${WORK_HOME}/wazuh-info.txt"
+
 {
     echo "================================================================="
     echo "                 Wazuh Installation Information"
@@ -225,12 +207,12 @@ INFO_FILE="${WORK_HOME}/wazuh-info.txt"
     echo "Credentials  : ${WORK_HOME}/wazuh-passwords.txt"
     echo "Install files: ${WORK_HOME}/wazuh-install-files/"
     echo
-    echo "Detection scenarios (all Security channel, eventchannel format):"
-    echo "  115100  Suspicious PowerShell        4688   -> triggers task-kill AR"
-    echo "  115210  Brute-force correlation      4625   x5/60s per account"
-    echo "  115310  Scheduled task persistence   4688 + 4698"
+    echo "Detection scenario:"
+    echo "  115200  Failed RDP authentication       4625"
+    echo "  115210  RDP brute-force correlation      4625 x4/60s"
+    echo "  115220  Successful login after failures  4624"
     echo
-    echo "Simulation scripts live on the Windows endpoint, not here."
+    echo "Simulation script lives on the Windows endpoint."
     echo
     if [ "$ALL_OK" = true ]; then
         echo "Services     : all running"

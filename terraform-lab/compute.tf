@@ -15,7 +15,7 @@ resource "aws_instance" "wazuh" {
     aws_s3_object.userdata,
   ]
 
-  user_data = templatefile("${local.userdata_dir}/s3-bootstrap.sh.tpl", {
+  user_data = templatefile("${local.userdata_dir}/bootstrap.sh.tpl", {
     s3_bucket     = var.userdata_bucket
     timezone      = var.timezone
     wazuh_version = var.wazuh_version
@@ -25,7 +25,7 @@ resource "aws_instance" "wazuh" {
     # "key => md5", so editing windows.ps1 does NOT churn this instance.
     payloads = {
       for k, v in local.userdata_hashes : k => v
-      if contains(["common.sh", "wazuh.sh", "local_rules.xml", "active-response.conf"], k)
+      if contains(["linux-setup.sh", "wazuh-setup.sh", "wazuh-local-rules.xml"], k)
     }
   })
 
@@ -66,20 +66,19 @@ resource "aws_instance" "windows_endpoint" {
     aws_s3_object.userdata,
   ]
 
-  user_data = templatefile("${local.userdata_dir}/windows-bootstrap.ps1.tpl", {
-    s3_bucket        = var.userdata_bucket
-    wazuh_manager_ip = aws_instance.wazuh.private_ip
-    wazuh_version    = var.wazuh_version
-    wazuh_agent_msi  = local.wazuh_agent_msi
-    ami_unpinned     = local.windows_ami_unpinned
+    user_data = templatefile("${local.userdata_dir}/windows-bootstrap.ps1.tpl", {
+      s3_bucket        = var.userdata_bucket
+      wazuh_manager_ip = aws_instance.wazuh.private_ip
+      wazuh_version    = var.wazuh_version
+      wazuh_agent_msi  = local.wazuh_agent_msi
+      ami_unpinned     = local.windows_ami_unpinned
 
-    # Windows-side payloads only. Simulation scripts land here in Batch 4
-    # and will be picked up automatically by the prefix match.
-    payloads = {
-      for k, v in local.userdata_hashes : k => v
-      if k == "windows.ps1" || startswith(k, "simulations/")
-    }
-  })
+      # Windows-side provisioning payload only.
+      payloads = {
+        for k, v in local.userdata_hashes : k => v
+        if k == "windows.ps1"
+      }
+    })
 
   metadata_options {
     http_endpoint = "enabled"

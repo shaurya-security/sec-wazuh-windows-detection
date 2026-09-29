@@ -1,0 +1,64 @@
+
+<group name="windows,soc_simulation,">
+
+  <!-- ============================================================
+       SCENARIO 1: RDP BRUTE FORCE (T1110)
+       Source: Security 4625 - failed logon
+       Source: Security 4624 - successful logon
+       ============================================================ -->
+
+  <!-- Individual Failed Logon -->
+  <rule id="115200" level="13">
+    <if_sid>60122</if_sid>
+    <field name="win.eventdata.logonType">^2$|^3$|^10$</field>
+
+    <description>
+      SOC-SIM [Scenario 1]: Failed logon - $(win.eventdata.targetUserName) from $(win.eventdata.ipAddress)
+    </description>
+
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+
+    <group>authentication_failed,windows_bruteforce,</group>
+  </rule>
+
+
+  <!-- Brute Force: 4 failures from same IP -->
+  <rule id="115210" level="13" frequency="4" timeframe="60">
+    <if_matched_sid>115200</if_matched_sid>
+
+    <same_field>win.eventdata.ipAddress</same_field>
+
+    <description>
+      SOC-SIM [Scenario 1]: RDP brute force - $(frequency) failures from $(win.eventdata.ipAddress)
+    </description>
+
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+
+    <group>authentication_failed,bruteforce,windows,</group>
+  </rule>
+
+
+  <!-- Successful Logon after 4+ failed attempts -->
+  <rule id="115220" level="14" frequency="4" timeframe="120">
+    <if_sid>92657</if_sid>
+    <if_matched_sid>115200</if_matched_sid>
+
+    <same_field>win.eventdata.ipAddress</same_field>
+
+    <description>
+      SOC-SIM [Scenario 1]: RDP login after $(frequency) failures - $(win.eventdata.targetUserName)
+    </description>
+
+    <mitre>
+      <id>T1110</id>
+      <id>T1078</id>
+    </mitre>
+
+    <group>authentication_success,possible_compromise,windows,</group>
+  </rule>
+
+

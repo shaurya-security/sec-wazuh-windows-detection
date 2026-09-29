@@ -23,6 +23,8 @@ locals {
   wazuh_ec2_name   = "${local.ec2_name}-wazuh"
   windows_ec2_name = "${local.ec2_name}-windows-soc"
 
+  bad_actor_ip = "${chomp(data.http.my_public_ip.response_body)}/32"
+
   ########################################
   # Wazuh versions (single source of truth)
   ########################################
@@ -55,3 +57,7 @@ locals {
     for k, p in local.userdata_objects : k => filemd5(p)
   }
 }
+
+
+
+       
