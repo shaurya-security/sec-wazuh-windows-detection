@@ -66,19 +66,19 @@ resource "aws_instance" "windows_endpoint" {
     aws_s3_object.userdata,
   ]
 
-    user_data = templatefile("${local.userdata_dir}/windows-bootstrap.ps1.tpl", {
-      s3_bucket        = var.userdata_bucket
-      wazuh_manager_ip = aws_instance.wazuh.private_ip
-      wazuh_version    = var.wazuh_version
-      wazuh_agent_msi  = local.wazuh_agent_msi
-      ami_unpinned     = local.windows_ami_unpinned
+  user_data = templatefile("${local.userdata_dir}/windows-bootstrap.ps1.tpl", {
+    s3_bucket        = var.userdata_bucket
+    wazuh_manager_ip = aws_instance.wazuh.private_ip
+    wazuh_version    = var.wazuh_version
+    wazuh_agent_msi  = local.wazuh_agent_msi
+    ami_unpinned     = local.windows_ami_unpinned
 
-      # Windows-side provisioning payload only.
-      payloads = {
-        for k, v in local.userdata_hashes : k => v
-        if k == "windows.ps1"
-      }
-    })
+    # Windows-side provisioning payload only.
+    payloads = {
+      for k, v in local.userdata_hashes : k => v
+      if k == "windows.ps1"
+    }
+  })
 
   metadata_options {
     http_endpoint = "enabled"

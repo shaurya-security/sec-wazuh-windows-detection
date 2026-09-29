@@ -19,7 +19,7 @@ resource "aws_vpc" "main" {
 resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = var.public_subnet_cidr
-  availability_zone       = "ap-south-1a"
+  availability_zone       = var.availability_zone
   map_public_ip_on_launch = true
 
   tags = {
@@ -125,6 +125,17 @@ resource "aws_security_group" "windows_sg" {
   name        = "${local.sg_name}-windows"
   description = "Windows SOC endpoint"
   vpc_id      = aws_vpc.main.id
+
+  # RDP - locked to the operator's public IP only (the "bad actor" workstation).
+  # This is the exposure the simulation abuses. Containment = delete this block
+  # and re-apply (see evidence/03 and docs/detection-rules.md).
+  ingress {
+    description = "RDP from Bad Actor (Fedora)"
+    from_port   = 3389
+    to_port     = 3389
+    protocol    = "tcp"
+    cidr_blocks = [local.bad_actor_ip]
+  }
 
   egress {
     description = "Allow outbound traffic"

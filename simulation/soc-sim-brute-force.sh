@@ -11,7 +11,7 @@ set -u
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TF_DIR="${TF_DIR:-$(cd "${SCRIPT_DIR}/../terraform-lab" && pwd)}"
+TF_DIR="${TF_DIR:-$(cd "${SCRIPT_DIR}/../terraform/lab" && pwd)}"
 
 TARGET_USER="FakeSOCUser"
 TARGET_PASS_GOOD="ValidPass123!"

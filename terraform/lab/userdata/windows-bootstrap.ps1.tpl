@@ -2,9 +2,6 @@
 # Terraform-rendered bootstrap shim for the Windows SOC endpoint.
 # Thin by design: fetch from S3, pass configuration as named parameters.
 #
-# Sysmon is NOT part of this payload set - windows.ps1 downloads it directly
-# from Sysinternals at install time.
-#
 # Payload fingerprints:
 %{ for key, hash in payloads ~}
 #   ${key} = ${hash}

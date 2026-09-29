@@ -40,8 +40,9 @@ locals {
   #
   # Everything under userdata/ EXCEPT *.tpl files, which are rendered
   # inline by Terraform rather than fetched at boot. New scripts dropped
-  # into userdata/ (including the simulation scripts) are picked up
-  # automatically with no changes to s3.tf.
+  # into userdata/ are picked up automatically with no changes to s3.tf.
+  # (The attack simulation lives in /simulation and is run from the operator's
+  # workstation, not shipped to the instances.)
   ########################################
 
   userdata_dir = "${path.module}/userdata"
@@ -57,7 +58,3 @@ locals {
     for k, p in local.userdata_objects : k => filemd5(p)
   }
 }
-
-
-
-       

@@ -24,8 +24,8 @@ variable "enable_versioning" {
 
 variable "bucket_force_destroy" {
   type        = bool
-  description = "Whether to allow force deletion of the bucket if it contains objects."
-  default     = false
+  description = "Allow terraform destroy to delete the buckets even when they contain objects. True by default so lab tear-downs are one command."
+  default     = true
 }
 
 variable "kms_key_arn" {

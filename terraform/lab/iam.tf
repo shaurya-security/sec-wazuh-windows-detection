@@ -37,7 +37,7 @@ resource "aws_iam_role_policy" "userdata_s3_read" {
     Statement = [{
       Effect   = "Allow"
       Action   = "s3:GetObject"
-      Resource = "arn:aws:s3:::shaurya-terraform-userdata-2026/*"
+      Resource = "arn:aws:s3:::${var.userdata_bucket}/*"
     }]
   })
 }

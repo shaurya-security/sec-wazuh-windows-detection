@@ -101,5 +101,3 @@ variable "timezone" {
   type        = string
   default     = "Asia/Kolkata"
 }
-
-

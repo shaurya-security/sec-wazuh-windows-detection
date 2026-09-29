@@ -9,12 +9,16 @@ permissions:
   contents: read
 
 jobs:
-  terraform:
+  validate:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [ terraform/bootstrap, terraform/lab ]
 
     defaults:
       run:
-        working-directory: terraform-lab
+        working-directory: ${{ matrix.module }}
 
     steps:
       - name: Checkout repository
@@ -32,8 +36,15 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Run Checkov
         uses: bridgecrewio/checkov-action@v12
         continue-on-error: true
         with:
-          directory: terraform-lab
+          directory: terraform
+          config_file: terraform/lab/.checkov.yaml

@@ -5,7 +5,7 @@ skip-check:
   # Allow unrestricted outbound traffic from instances
   - CKV_AWS_382
 
-  # t3.micro is EBS-optimized by AWS; Checkov still flags it
+  # Current-generation instance types are EBS-optimized by default; Checkov cannot infer this
   - CKV_AWS_135
 
   # VPC Flow Logs planned as a future enhancement

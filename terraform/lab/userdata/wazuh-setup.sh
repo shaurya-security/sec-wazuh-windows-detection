@@ -212,7 +212,7 @@ INFO_FILE="${WORK_HOME}/wazuh-info.txt"
     echo "  115210  RDP brute-force correlation      4625 x4/60s"
     echo "  115220  Successful login after failures  4624"
     echo
-    echo "Simulation script lives on the Windows endpoint."
+    echo "Simulation script: simulation/soc-sim-brute-force.sh (run from the operator workstation)."
     echo
     if [ "$ALL_OK" = true ]; then
         echo "Services     : all running"
