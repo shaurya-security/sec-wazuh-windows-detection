@@ -61,7 +61,6 @@ resource "aws_route_table_association" "public_association" {
   route_table_id = aws_route_table.public_rtb.id
 }
 
-
 ########################################
 # Wazuh Security Group
 ########################################
@@ -116,19 +115,18 @@ resource "aws_security_group" "wazuh_sg" {
   }
 }
 
-
 ########################################
 # Windows Security Group
 ########################################
 
 resource "aws_security_group" "windows_sg" {
-  name        = "${local.sg_name}-windows"
+  name        = local.windows_sg_name
   description = "Windows SOC endpoint"
   vpc_id      = aws_vpc.main.id
 
   # RDP - locked to the operator's public IP only (the "bad actor" workstation).
   # This is the exposure the simulation abuses. Containment = delete this block
-  # and re-apply (see evidence/03 and docs/detection-rules.md).
+  # and re-apply (see evidence/README.md and docs/incident-report.md).
   ingress {
     description = "RDP from Bad Actor (Fedora)"
     from_port   = 3389

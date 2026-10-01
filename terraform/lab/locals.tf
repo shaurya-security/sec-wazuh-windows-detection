@@ -1,5 +1,4 @@
 locals {
-
   ########################################
   # Naming
   ########################################
@@ -14,7 +13,6 @@ locals {
   rtb_name        = "${local.owner}-rtb"
   public_rtb_name = "${local.rtb_name}-public"
 
-  sg_name         = local.sg_name_base
   sg_name_base    = "${local.owner}-sg"
   wazuh_sg_name   = "${local.sg_name_base}-wazuh"
   windows_sg_name = "${local.sg_name_base}-windows"
@@ -23,6 +21,7 @@ locals {
   wazuh_ec2_name   = "${local.ec2_name}-wazuh"
   windows_ec2_name = "${local.ec2_name}-windows-soc"
 
+  # Operator workstation (the simulated attacker); allow-listed for RDP and the dashboard.
   bad_actor_ip = "${chomp(data.http.my_public_ip.response_body)}/32"
 
   ########################################

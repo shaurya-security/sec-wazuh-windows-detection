@@ -15,18 +15,21 @@ variable "availability_zone" {
 }
 
 variable "vpc_cidr" {
-  type    = string
-  default = "10.0.0.0/16"
+  description = "CIDR block for the lab VPC."
+  type        = string
+  default     = "10.0.0.0/16"
 }
 
 variable "public_subnet_cidr" {
-  type    = string
-  default = "10.0.1.0/24"
+  description = "CIDR block for the public subnet (must sit inside vpc_cidr)."
+  type        = string
+  default     = "10.0.1.0/24"
 }
 
 variable "owner" {
-  type    = string
-  default = "shaurya"
+  description = "Prefix used in resource Name tags."
+  type        = string
+  default     = "shaurya"
 }
 
 ########################################
@@ -84,13 +87,11 @@ variable "windows_ami_id" {
   }
 }
 
-
 variable "linux_ami_id" {
   description = "Pinned Amazon Linux 2023 AMI ID"
   type        = string
   default     = "ami-094210f044117049d"
 }
-
 
 ########################################
 # Misc

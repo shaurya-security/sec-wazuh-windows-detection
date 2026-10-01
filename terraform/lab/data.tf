@@ -2,7 +2,6 @@
 # Amazon Linux 2023 (Wazuh manager)
 ########################################
 
-
 data "aws_ami" "amazon_linux" {
   count       = var.linux_ami_id == "" ? 1 : 0
   most_recent = true

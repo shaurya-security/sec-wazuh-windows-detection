@@ -18,7 +18,8 @@ output "wazuh_public_ip" {
 }
 
 output "wazuh_id" {
-  value = aws_instance.wazuh.id
+  description = "EC2 instance ID of the Wazuh manager (for SSM Session Manager)."
+  value       = aws_instance.wazuh.id
 }
 
 output "wazuh_dashboard_url" {
@@ -31,15 +32,18 @@ output "wazuh_dashboard_url" {
 ########################################
 
 output "windows_private_ip" {
-  value = aws_instance.windows_endpoint.private_ip
+  description = "Private IP of the Windows endpoint."
+  value       = aws_instance.windows_endpoint.private_ip
 }
 
 output "windows_public_ip" {
-  value = aws_instance.windows_endpoint.public_ip
+  description = "Public IP of the Windows endpoint (RDP target for the simulation)."
+  value       = aws_instance.windows_endpoint.public_ip
 }
 
 output "windows_id" {
-  value = aws_instance.windows_endpoint.id
+  description = "EC2 instance ID of the Windows endpoint (for SSM Session Manager)."
+  value       = aws_instance.windows_endpoint.id
 }
 
 ########################################
